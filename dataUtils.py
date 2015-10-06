@@ -43,8 +43,21 @@ def readData(path, isTraining=True, returnSize=-1):
     else:
     	return data
 
+
 """
-Uncomment for testing
+Create a csv file with given data
+@param data - a 2D array with row = example
+"""
+def writeData(data):
+    with open("./data/ml_dataset_test_out.csv", 'wb') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Id", "Prediction"])
+        for row in data:
+            writer.writerow(row)
+
+
+"""
+Uncomment to test:
 """
 #path_to_train_data = "./data/ml_dataset_train.csv"
 #path_to_test_data = "./data/ml_dataset_test_in.csv"
