@@ -38,7 +38,7 @@ def readData(path, isTraining=True, returnSize=-1):
 
     random.shuffle(data) # randomize the examples
     
-    if returnSize > 0:
+    if returnSize > 0 and returnSize < len(data):
     	return random.sample(data, returnSize) # for testing purposes return a small sample.
     else:
     	return data
