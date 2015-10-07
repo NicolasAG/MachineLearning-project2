@@ -26,7 +26,9 @@ def readData(path, isTraining=True, returnSize=-1):
                 continue
             if len(row) < 2: # skip empty lines
                 continue
-
+            if len(row[1]) < 10: # skip examples with less than 10 characters
+                print "skip example %s because text was judge to be too small." % row[0]
+                continue
             lID = row[0]
             lText = row[1]
             lClass = None
