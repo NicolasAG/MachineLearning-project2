@@ -1,8 +1,21 @@
 #!/usr/bin/env python
 
-from dataUtils import *
-from nltk.corpus import stopwords
+"""
+This file implements the Naive Bayes algorithm on a given dataset.
+"""
+
+import numpy as np
 import string, re
+
+from dataUtils import *
+
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+#from nltk.stem import WordNetLemmatizer
+
+ps = PorterStemmer()
+#lemmatizer = WordNetLemmatizer()
 
 PATH_TO_TRAIN_DATA = "./data/ml_dataset_train.csv"
 PATH_TO_TEST_DATA = "./data/ml_dataset_test_in.csv"
@@ -24,7 +37,9 @@ Return an array of 'important' lowercase word without punctuation given a text.
 def getImportantWords(text):
     text = re.sub(r'[0-9]+', '', text.translate(None, string.punctuation)) # remove punctuation and numbers
     text = text.lower().decode("utf-8-sig") # lower case and decode to unicode
-    return filter(lambda w: w not in EXCLUDE, text.split())
+    text = map(lambda w: ps.stem(w), word_tokenize(text))
+    #text = map(lambda w: lemmatizer.lemmatize(w), word_tokenize(text))
+    return filter(lambda w: w not in EXCLUDE, text)
 
 """
 Calculate the word probability for each class.
@@ -107,62 +122,62 @@ def naiveBayes(training_data, testing_data):
     print "Making predictions..."
 
     predictions = []
-    #correct = 0
+    correct = 0
     for item in testing_data:
         #print item
 
-        # P(C|W) = product over all words in W of : P(w|C)*P(C) / P(w)
-        author_proba = 1 # P(author|W)
-        movie_proba = 1 # P(movie|W)
-        music_proba = 1 # P(music|W)
-        interview_proba = 1 # P(interview|W)
+        # P(C|W) = log of probability of the class + sum of the log over all words in W : log(P(C)) + SUM[ log(P(w|C)) - log(P(w)) ]
+        author_proba = np.log(classProba[AUTHOR]) # P(author|W)
+        movie_proba = np.log(classProba[MOVIE]) # P(movie|W)
+        music_proba = np.log(classProba[MUSIC]) # P(music|W)
+        interview_proba = np.log(classProba[INTERVIEW]) # P(interview|W)
 
         for w in getImportantWords(item[1]): # for each word in the test text:
             # update the proba of each class according to this word.
             
             ## AUTHOR ##
             if w in classWordProba[AUTHOR]:
-                author_proba = author_proba*classProba[AUTHOR]*classWordProba[AUTHOR][w]/wordProba[w]
+                author_proba = author_proba+np.log(classWordProba[AUTHOR][w])-np.log(wordProba[w])
             else:
-                author_proba = author_proba*classProba[AUTHOR]*(1.0/(len(classWordProba[AUTHOR])))#/(1.0/(len(wordProba)))
+                author_proba = author_proba+np.log((1.0/(len(classWordProba[AUTHOR]))))#-np.log((1.0/(len(wordProba))))
             ## MOVIE ##
             if w in classWordProba[MOVIE]:
-                movie_proba = movie_proba*classProba[MOVIE]*classWordProba[MOVIE][w]/wordProba[w]
+                movie_proba = movie_proba+np.log(classWordProba[MOVIE][w])-np.log(wordProba[w])
             else:
-                movie_proba = movie_proba*classProba[MOVIE]*(1.0/(len(classWordProba[MOVIE])))#/(1.0/(len(wordProba)))
+                movie_proba = movie_proba+np.log((1.0/(len(classWordProba[MOVIE]))))#-np.log((1.0/(len(wordProba))))
             ## MUSIC ##
             if w in classWordProba[MUSIC]:
-                music_proba = music_proba*classProba[MUSIC]*classWordProba[MUSIC][w]/wordProba[w]
+                music_proba = music_proba+np.log(classWordProba[MUSIC][w])-np.log(wordProba[w])
             else:
-                music_proba = music_proba*classProba[MUSIC]*(1.0/(len(classWordProba[MUSIC])))#/(1.0/(len(wordProba)))
+                music_proba = music_proba+np.log((1.0/(len(classWordProba[MUSIC]))))#-np.log((1.0/(len(wordProba))))
             ## INTERVIEW ##
             if w in classWordProba[INTERVIEW]:
-                interview_proba = interview_proba*classProba[INTERVIEW]*classWordProba[INTERVIEW][w]/wordProba[w]
+                interview_proba = interview_proba+np.log(classWordProba[INTERVIEW][w])-np.log(wordProba[w])
             else:
-                interview_proba = interview_proba*classProba[INTERVIEW]*(1.0/(len(classWordProba[INTERVIEW])))#/(1.0/(len(wordProba)))
+                interview_proba = interview_proba+np.log((1.0/(len(classWordProba[INTERVIEW]))))#-np.log((1.0/(len(wordProba))))
 
         maxi_proba = max([author_proba, movie_proba, music_proba, interview_proba])
 
         if author_proba == maxi_proba:
             #print "AUTHOR - 0"
-            predictions.append([item[0], AUTHOR])
-            #if item[2] == AUTHOR:
-            #    correct = correct+1.0
+            #predictions.append([item[0], AUTHOR])
+            if item[2] == AUTHOR:
+                correct = correct+1.0
         elif movie_proba == maxi_proba:
             #print "MOVIE - 1"
-            predictions.append([item[0], MOVIE])
-            #if item[2] == MOVIE:
-            #    correct = correct+1.0
+            #predictions.append([item[0], MOVIE])
+            if item[2] == MOVIE:
+                correct = correct+1.0
         elif music_proba == maxi_proba:
             #print "MUSIC - 2"
-            predictions.append([item[0], MUSIC])
-            #if item[2] == MUSIC:
-            #    correct = correct+1.0
+            #predictions.append([item[0], MUSIC])
+            if item[2] == MUSIC:
+                correct = correct+1.0
         elif interview_proba == maxi_proba:
             #print "INTERVIEW - 3"
-            predictions.append([item[0], INTERVIEW])
-            #if item[2] == INTERVIEW:
-            #    correct = correct+1.0
+            #predictions.append([item[0], INTERVIEW])
+            if item[2] == INTERVIEW:
+                correct = correct+1.0
         else:
             print "ERROR: float comparaison."
 
@@ -172,7 +187,7 @@ def naiveBayes(training_data, testing_data):
         #print interview_proba
         #print ""
 
-    #print correct / len(testing_data)
+    print correct / len(testing_data)
     print "done making predictions."
     return predictions
 
@@ -180,7 +195,7 @@ def naiveBayes(training_data, testing_data):
 """
 Uncomment to test:
 """
-training_data = readData(PATH_TO_TRAIN_DATA)#, returnSize=1000) #max = 53245
+training_data = readData(PATH_TO_TRAIN_DATA)#, returnSize=10) #max = 53245
 data = naiveBayes(training_data[:40000], training_data[40000:])
 
 """
