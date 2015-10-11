@@ -137,24 +137,24 @@ def naiveBayes(training_data, testing_data):
             
             ## AUTHOR ##
             if w in classWordProba[AUTHOR]:
-                author_proba = author_proba+np.log(classWordProba[AUTHOR][w])-np.log(wordProba[w])
+                author_proba += np.log(classWordProba[AUTHOR][w])-np.log(wordProba[w])
             else:
-                author_proba = author_proba+np.log((1.0/(len(classWordProba[AUTHOR]))))#-np.log((1.0/(len(wordProba))))
+                author_proba += np.log((1.0/(len(classWordProba[AUTHOR]))))#-np.log((1.0/(len(wordProba))))
             ## MOVIE ##
             if w in classWordProba[MOVIE]:
-                movie_proba = movie_proba+np.log(classWordProba[MOVIE][w])-np.log(wordProba[w])
+                movie_proba += np.log(classWordProba[MOVIE][w])-np.log(wordProba[w])
             else:
-                movie_proba = movie_proba+np.log((1.0/(len(classWordProba[MOVIE]))))#-np.log((1.0/(len(wordProba))))
+                movie_proba += np.log((1.0/(len(classWordProba[MOVIE]))))#-np.log((1.0/(len(wordProba))))
             ## MUSIC ##
             if w in classWordProba[MUSIC]:
-                music_proba = music_proba+np.log(classWordProba[MUSIC][w])-np.log(wordProba[w])
+                music_proba += np.log(classWordProba[MUSIC][w])-np.log(wordProba[w])
             else:
-                music_proba = music_proba+np.log((1.0/(len(classWordProba[MUSIC]))))#-np.log((1.0/(len(wordProba))))
+                music_proba += np.log((1.0/(len(classWordProba[MUSIC]))))#-np.log((1.0/(len(wordProba))))
             ## INTERVIEW ##
             if w in classWordProba[INTERVIEW]:
-                interview_proba = interview_proba+np.log(classWordProba[INTERVIEW][w])-np.log(wordProba[w])
+                interview_proba += np.log(classWordProba[INTERVIEW][w])-np.log(wordProba[w])
             else:
-                interview_proba = interview_proba+np.log((1.0/(len(classWordProba[INTERVIEW]))))#-np.log((1.0/(len(wordProba))))
+                interview_proba += np.log((1.0/(len(classWordProba[INTERVIEW]))))#-np.log((1.0/(len(wordProba))))
 
         maxi_proba = max([author_proba, movie_proba, music_proba, interview_proba])
 
