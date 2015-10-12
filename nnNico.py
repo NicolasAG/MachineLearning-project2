@@ -7,7 +7,17 @@ This file implements the k-Nearest Neighbor algorithm on a given dataset.
 from dataUtils import *
 
 import numpy as np
-import heapq
+import string, re, heapq
+
+from datetime import datetime
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+#from nltk.stem import WordNetLemmatizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+ps = PorterStemmer()
+#lemmatizer = WordNetLemmatizer()
 
 PATH_TO_TRAIN_DATA = "./data/ml_dataset_train.csv"
 PATH_TO_TEST_DATA = "./data/ml_dataset_test_in.csv"
@@ -17,23 +27,36 @@ MOVIE = '1'
 MUSIC = '2'
 INTERVIEW = '3'
 
+EXCLUDE = stopwords.words('english')
+EXCLUDE.append('eos')
+
+"""
+Return an array of 'important' lowercase word without punctuation given a text.
+@param text - the text to take the words from.
+@return - an array of words.
+@see - http://stackoverflow.com/a/266162/5025824
+"""
+def getImportantWords(text):
+    text = re.sub(r'[0-9]+', '', text.translate(None, string.punctuation)) # remove punctuation and numbers
+    text = text.lower().decode("utf-8-sig") # lower case and decode to unicode
+    text = map(lambda w: ps.stem(w), word_tokenize(text))
+    #text = map(lambda w: lemmatizer.lemmatize(w), word_tokenize(text))
+    return filter(lambda w: w not in EXCLUDE, text)
+
 """
 Calculates the 'distance' between two data points.
 In this case, one datapoint is a tuple of this from: (id, text, class).
 @param item - the first item to compare (from testing_data).
 @param neighbor - the second item to compare (from training_data_data).
 @return the distance (always positive) between the two items.
-@see: https://www.google.com/search?hl=en&q=python%20tools%20to%20find%20%22distance%22%20between%20two%20texts
-@see: http://stackoverflow.com/questions/8897593/similarity-between-two-text-documents
 """
 def distance(item, neighbor):
-    position1 = 0 #TODO: find features for this text
-    position2 = 0 #TODO: find features for this text
-
-    text1 = item[1]
-    text2 = neighbor[1]
-
-    return abs(position2 - position1)
+    #ONLY does TF-IDF, find others..?
+    text1 = " ".join(getImportantWords(item[1]))
+    text2 = " ".join(getImportantWords(neighbor[1]))
+    tfidf = TfidfVectorizer().fit_transform([text1, text2])
+    return abs( (tfidf * tfidf.T).A[1][0] )
+    #return 0
 
 """
 Calculates the probability of being in each class given a set of neighbors.
@@ -92,12 +115,29 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
     correct = 0
     heapq.heapify(training_data) # turning the iterable into an actual heap for better performance.
 
+    #documents = []
+    #similarities = {}
+    #for item in training_data:
+    #    documents.append(item[1])
+    #    similarities[int(item[0])] = 0.0
+
+    i=0
     for item in testing_data:
+        print "%d / %d" % (i, len(testing_data))
+        i+=1
+        #if len(documents) == len(training_data)+1: # if documents contains the previous test-text, remove it.
+        #    documents = documents[:-1]
+        #documents.append(item[1]) # append the new test-text to the corpus.
+        #tfidf = TfidfVectorizer().fit_transform(documents) # learn the tf-idf on the corpus.
+        #sim = (tfidf * tfidf.T).A[-1] # take the similarity vector for the last added document: ie: item[1]
+        #for i in range(len(training_data)):
+        #    similarities[i] = sim[i]
+
         #####################
     	## Find k nearests ##
         #####################
     	# cf: http://stackoverflow.com/questions/24112259/finding-k-closest-numbers-to-a-given-number
-    	#     https://docs.python.org/2/library/heapq.html#heapq.nsmallest
+    	#     https://docs.python.org/2/library/heapq.html
     	nn = heapq.nsmallest(k, training_data, key = lambda x: distance(item, x))
 
         #####################
@@ -154,11 +194,12 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
     print "done making predictions."
     return predictions
 
+start = datetime.now()
 """
 Uncomment to test:
 """
-training_data = readData(PATH_TO_TRAIN_DATA)#, returnSize=10) #max = 53245
-predictions = kNN(training_data[:40000], training_data[40000:], k=100, option=3, pLambda=1)
+training_data = readData(PATH_TO_TRAIN_DATA, returnSize=1000) #max = 53245
+predictions = kNN(training_data[:800], training_data[800:], k=10, option=1, pLambda=1)
 
 """
 Uncomment to create the prediction file:
@@ -169,3 +210,5 @@ Uncomment to create the prediction file:
 #print "Creating the file..."
 #writeData(predictions)
 #print "file created."
+
+print datetime.now() - start
