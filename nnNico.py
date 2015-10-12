@@ -49,7 +49,7 @@ In this case, one datapoint is a tuple of this from: (id, text, class).
 @param item - the first item to compare (from testing_data).
 @param neighbor - the second item to compare (from training_data_data).
 @return the distance (always positive) between the two items.
-"""
+
 def distance(item, neighbor):
     #ONLY does TF-IDF, find others..?
     text1 = " ".join(getImportantWords(item[1]))
@@ -57,6 +57,7 @@ def distance(item, neighbor):
     tfidf = TfidfVectorizer().fit_transform([text1, text2])
     return abs( (tfidf * tfidf.T).A[1][0] )
     #return 0
+"""
 
 """
 Calculates the probability of being in each class given a set of neighbors.
@@ -74,15 +75,16 @@ def getEqWeightAvg(nn):
 Calculates the prediction of a given item relative to neighbors distance.
 @param item - the item to predict for.
 @param nn - array of nearest neighbors of the form: [(id, text, class),(...),...]
+@param similarities - dictionary of distance between item and all texts in training_data.
 @param pLambda - used for calculating the weight of a neighbor.
 @return the predicted class of the item.
 """
-def getWeightPrediction(item, nn, pLambda):
+def getWeightPrediction(item, nn, similarities, pLambda):
     prediction = 0.0
     sum_of_weights = 0.0
 
     for neighbor in nn:
-        weight = np.exp( - (distance(item, neighbor)**2) / (pLambda**2) )
+        weight = np.exp( - (similarities[int(neighbor[0])]**2) / (pLambda**2) )
         prediction += int(neighbor[2]) * weight
         sum_of_weights += weight
 
@@ -115,31 +117,34 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
     correct = 0
     heapq.heapify(training_data) # turning the iterable into an actual heap for better performance.
 
-    #documents = []
-    #similarities = {}
-    #for item in training_data:
-    #    documents.append(item[1])
-    #    similarities[int(item[0])] = 0.0
+    documents = []
+    similarities = {}
+    for item in training_data:
+        documents.append(" ".join(getImportantWords(item[1])))
+        similarities[int(item[0])] = 0.0
 
-    i=0
+    iteration=0
     for item in testing_data:
-        print "%d / %d" % (i, len(testing_data))
-        i+=1
-        #if len(documents) == len(training_data)+1: # if documents contains the previous test-text, remove it.
-        #    documents = documents[:-1]
-        #documents.append(item[1]) # append the new test-text to the corpus.
-        #tfidf = TfidfVectorizer().fit_transform(documents) # learn the tf-idf on the corpus.
-        #sim = (tfidf * tfidf.T).A[-1] # take the similarity vector for the last added document: ie: item[1]
-        #for i in range(len(training_data)):
-        #    similarities[i] = sim[i]
-
+        print " %d / %d" % (iteration, len(testing_data))
+        iteration+=1
         #####################
-    	## Find k nearests ##
+        ## Find k nearests ##
         #####################
-    	# cf: http://stackoverflow.com/questions/24112259/finding-k-closest-numbers-to-a-given-number
-    	#     https://docs.python.org/2/library/heapq.html
-    	nn = heapq.nsmallest(k, training_data, key = lambda x: distance(item, x))
+        if len(documents) == len(training_data)+1: # if documents contains the previous test-text, remove it.
+            documents = documents[:-1]
+        documents.append(" ".join(getImportantWords(item[1]))) # append the new test-text to the corpus.
+        tfidf = TfidfVectorizer().fit_transform(documents) # learn the tf-idf on the corpus.
+        itemSim = (tfidf * tfidf.T).A[-1] # take the similarity vector for the last added document: ie: item[1]
+        # Note that itemSim[j] = similarity between item k and this test-item.
+        #print len(training_data)
+        #print len(similarities)
+        #print len(itemSim)
+        for j in range(len(training_data)):
+            similarities[j] = itemSim[j]
 
+    	#cf: https://docs.python.org/2/library/heapq.html
+    	nn = heapq.nlargest(k, similarities, key = lambda x: abs(1-x)) # get the key of the closest items
+        nn = [training_data[i] for i in nn] # convert nn back to an array of items.
         #####################
         ## Make prediction ##
         #####################
@@ -162,7 +167,7 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
             prediction = np.random.choice(4, p=[author_proba,movie_proba,music_proba,interview_proba])
         # OPTION3: distance-weighted (kernel-based) Nearest Neighbor: predict with weights relative to distance.
         elif option == 3:
-            prediction = getWeightPrediction(item, nn, pLambda)
+            prediction = getWeightPrediction(item, nn, similarities, pLambda)
         
         ##############################
         ## Append prediction result ##
@@ -198,8 +203,8 @@ start = datetime.now()
 """
 Uncomment to test:
 """
-training_data = readData(PATH_TO_TRAIN_DATA, returnSize=1000) #max = 53245
-predictions = kNN(training_data[:800], training_data[800:], k=10, option=1, pLambda=1)
+training_data = readData(PATH_TO_TRAIN_DATA, returnSize=10000) #max = 53245
+predictions = kNN(training_data[:8000], training_data[8000:], k=100, option=3, pLambda=1)
 
 """
 Uncomment to create the prediction file:
