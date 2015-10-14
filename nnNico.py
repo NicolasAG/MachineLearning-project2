@@ -14,7 +14,6 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
 #from nltk.stem import WordNetLemmatizer
-from sklearn.feature_extraction.text import TfidfVectorizer
 
 ps = PorterStemmer()
 #lemmatizer = WordNetLemmatizer()
@@ -47,17 +46,37 @@ def getImportantWords(text):
 Calculates the 'distance' between two data points.
 In this case, one datapoint is a tuple of this from: (id, text, class).
 @param item - the first item to compare (from testing_data).
-@param neighbor - the second item to compare (from training_data_data).
+@param neighbor_id - the string id of that neighbor.
+@param neighbor_word_proba - the probability of each word for this neighbor.
 @return the distance (always positive) between the two items.
-
-def distance(item, neighbor):
-    #ONLY does TF-IDF, find others..?
-    text1 = " ".join(getImportantWords(item[1]))
-    text2 = " ".join(getImportantWords(neighbor[1]))
-    tfidf = TfidfVectorizer().fit_transform([text1, text2])
-    return abs( (tfidf * tfidf.T).A[1][0] )
-    #return 0
 """
+item_distances = {} # cache variable that holds all distances from one item to all training points.
+def distance(item, neighbor_id, neighbor_word_proba):
+    diff = 0.0
+
+    item_word_proba = {} # probability of each word in this item.
+    total_words = 0.0 # total number of words in this item.
+    for w in getImportantWords(item[1]): # for each word:
+        item_word_proba[w] = item_word_proba[w]+1.0 if w in item_word_proba else 1.0
+        total_words += 1.0
+    for word in item_word_proba:
+        item_word_proba[word] /= total_words
+
+
+    for w1 in item_word_proba: # for each words in query item,
+        if w1 in neighbor_word_proba: # if the neighbor has it, add the difference in the proba.
+            diff += abs(item_word_proba[w1]-neighbor_word_proba[w1])
+        else:
+            diff += 1.0 #if the neighbor doesn't have it, add 1.
+    
+    for w2 in neighbor_word_proba: # for each word in the neighbor,
+        if w2 not in item_word_proba:
+            diff += 1.0 # if the query doesn't have it, add 1.
+        #if the query has the word, the difference in the proba was already added in the 1st loop.
+
+    global item_distances # get the cache variable
+    item_distances[neighbor_id] = diff # save in the cache.
+    return diff
 
 """
 Calculates the probability of being in each class given a set of neighbors.
@@ -75,18 +94,28 @@ def getEqWeightAvg(nn):
 Calculates the prediction of a given item relative to neighbors distance.
 @param item - the item to predict for.
 @param nn - array of nearest neighbors of the form: [(id, text, class),(...),...]
-@param similarities - dictionary of distance between item and all texts in training_data.
+@param neighbors_word_proba - the probability of each word for all neighbors.
 @param pLambda - used for calculating the weight of a neighbor.
 @return the predicted class of the item.
 """
-def getWeightPrediction(item, nn, similarities, pLambda):
+def getWeightPrediction(item, nn, neighbors_word_proba, pLambda):
+    global item_distances
+
     prediction = 0.0
     sum_of_weights = 0.0
 
     for neighbor in nn:
-        weight = np.exp( - (similarities[int(neighbor[0])]**2) / (pLambda**2) )
+        weight = 0.0
+        if neighbor[0] in item_distances: # get the cached distances.
+            weight = 1.0 / item_distances[neighbor[0]]
+        else:
+            print "  WARNING: distance not cached. recalculating..."
+            weight = 1.0 / distance(item, neighbor[0], neighbors_word_proba[neighbor[0]])
         prediction += int(neighbor[2]) * weight
         sum_of_weights += weight
+        
+    if prediction < 0.0 or prediction > 3.0:
+        raise ValueError("ERROR: predicion out of range")
 
     return round(prediction/sum_of_weights)
 
@@ -113,43 +142,42 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
         raise ValueError("option must be equal to 1 or 2 or 3.")
 
     print "Making predictions..."
-    predictions = []
-    correct = 0
-    heapq.heapify(training_data) # turning the iterable into an actual heap for better performance.
+    predictions = [] # array of predictions to return.
+    correct = 0 # number of correct predictions.
+    training_word_proba = {} # number of occurences of each words in each examples.
 
-    documents = []
-    similarities = {}
-    for item in training_data:
-        documents.append(" ".join(getImportantWords(item[1])))
-        similarities[int(item[0])] = 0.0
+    ## Populating training_word_proba ##
+    for item in training_data: # for each training example,
+        training_word_proba[item[0]] = {} # create a dictionary of word cuont.
+        total_words = 0.0 # total number of words in this example.
+        for w in getImportantWords(item[1]): # for each word:
+            training_word_proba[item[0]][w] = training_word_proba[item[0]][w]+1.0 if w in training_word_proba[item[0]] else 1.0
+            total_words += 1.0
+        for word in training_word_proba[item[0]]:
+            training_word_proba[item[0]][word] /= total_words
 
-    iteration=0
+    # turning the iterable into an actual heap for better performance. cf: https://docs.python.org/2/library/heapq.html
+    heapq.heapify(training_data)
+
+    iteration=1
     for item in testing_data:
         print " %d / %d" % (iteration, len(testing_data))
         iteration+=1
         #####################
         ## Find k nearests ##
+        #cf: https://docs.python.org/2/library/heapq.html
         #####################
-        if len(documents) == len(training_data)+1: # if documents contains the previous test-text, remove it.
-            documents = documents[:-1]
-        documents.append(" ".join(getImportantWords(item[1]))) # append the new test-text to the corpus.
-        tfidf = TfidfVectorizer().fit_transform(documents) # learn the tf-idf on the corpus.
-        itemSim = (tfidf * tfidf.T).A[-1] # take the similarity vector for the last added document: ie: item[1]
-        # Note that itemSim[j] = similarity between item k and this test-item.
-        #print len(training_data)
-        #print len(similarities)
-        #print len(itemSim)
-        for j in range(len(training_data)):
-            similarities[j] = itemSim[j]
-
-    	#cf: https://docs.python.org/2/library/heapq.html
-    	nn = heapq.nlargest(k, similarities, key = lambda x: abs(1-x)) # get the key of the closest items
-        nn = [training_data[i] for i in nn] # convert nn back to an array of items.
+        global item_distances # get the cache variable.
+        item_distances = {} # reset the cached distances.
+        nn = heapq.nsmallest(k, training_data, key=lambda x: distance(item, x[0], training_word_proba[x[0]]))
+        # At this point, all distances for this test item should be cached.
+        #print item_distances
+        
         #####################
         ## Make prediction ##
         #####################
         prediction = None
-        # OPTION1: average their class with equal weight && predict most popular.
+        # OPTION1: average classes with equal weight && predict most popular.
         if option == 1:
             author_proba, movie_proba, music_proba, interview_proba = getEqWeightAvg(nn)
             maxi_proba = max([author_proba, movie_proba, music_proba, interview_proba])
@@ -161,13 +189,13 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
                 prediction = 2
             elif interview_proba == maxi_proba:
                 prediction = 3
-        # OPTION2: average their class with equal weight && predict a random class with proba = the average.
+        # OPTION2: average classes with equal weight && predict a random class with proba = the average.
         elif option == 2:
             author_proba, movie_proba, music_proba, interview_proba = getEqWeightAvg(nn)
             prediction = np.random.choice(4, p=[author_proba,movie_proba,music_proba,interview_proba])
         # OPTION3: distance-weighted (kernel-based) Nearest Neighbor: predict with weights relative to distance.
         elif option == 3:
-            prediction = getWeightPrediction(item, nn, similarities, pLambda)
+            prediction = getWeightPrediction(item, nn, training_word_proba, pLambda)
         
         ##############################
         ## Append prediction result ##
@@ -203,8 +231,8 @@ start = datetime.now()
 """
 Uncomment to test:
 """
-training_data = readData(PATH_TO_TRAIN_DATA, returnSize=10000) #max = 53245
-predictions = kNN(training_data[:8000], training_data[8000:], k=100, option=3, pLambda=1)
+training_data = readData(PATH_TO_TRAIN_DATA, returnSize=2000) #max = 53245
+predictions = kNN(training_data[:1600], training_data[1600:], k=10, option=2, pLambda=1)
 
 """
 Uncomment to create the prediction file:
