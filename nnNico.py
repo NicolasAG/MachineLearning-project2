@@ -67,11 +67,11 @@ def distance(item, neighbor_id, neighbor_word_proba):
         if w1 in neighbor_word_proba: # if the neighbor has it, add the difference in the proba.
             diff += abs(item_word_proba[w1]-neighbor_word_proba[w1])
         else:
-            diff += 1.0 #if the neighbor doesn't have it, add 1.
+            diff += item_word_proba[w1] #if the neighbor doesn't have it, add the item proba.
     
     for w2 in neighbor_word_proba: # for each word in the neighbor,
         if w2 not in item_word_proba:
-            diff += 1.0 # if the query doesn't have it, add 1.
+            diff += neighbor_word_proba[w2] # if the query doesn't have it, add the neighbor proba.
         #if the query has the word, the difference in the proba was already added in the 1st loop.
 
     global item_distances # get the cache variable
@@ -95,10 +95,9 @@ Calculates the prediction of a given item relative to neighbors distance.
 @param item - the item to predict for.
 @param nn - array of nearest neighbors of the form: [(id, text, class),(...),...]
 @param neighbors_word_proba - the probability of each word for all neighbors.
-@param pLambda - used for calculating the weight of a neighbor.
 @return the predicted class of the item.
 """
-def getWeightPrediction(item, nn, neighbors_word_proba, pLambda):
+def getWeightPrediction(item, nn, neighbors_word_proba):
     global item_distances
 
     prediction = 0.0
@@ -107,14 +106,22 @@ def getWeightPrediction(item, nn, neighbors_word_proba, pLambda):
     for neighbor in nn:
         weight = 0.0
         if neighbor[0] in item_distances: # get the cached distances.
-            weight = 1.0 / item_distances[neighbor[0]]
+            #d = item_distances[neighbor[0]]
+            d = (item_distances[neighbor[0]]**2)
+            if d == 0.0:
+                print "  WARNING: distance is 0. weight = 1/0.0001"
+            weight = 1.0 / (d+0.0001)
         else:
             print "  WARNING: distance not cached. recalculating..."
-            weight = 1.0 / distance(item, neighbor[0], neighbors_word_proba[neighbor[0]])
+            #d = distance(item, neighbor[0], neighbors_word_proba[neighbor[0]])
+            d = (distance(item, neighbor[0], neighbors_word_proba[neighbor[0]])**2)
+            if d == 0.0:
+                print "  WARNING: distance is 0. weight = 1/0.0001"
+            weight = 1.0 / (d+0.0001)
         prediction += int(neighbor[2]) * weight
         sum_of_weights += weight
-        
-    if prediction < 0.0 or prediction > 3.0:
+    
+    if round(prediction/sum_of_weights) < 0.0 or round(prediction/sum_of_weights) > 3.0:
         raise ValueError("ERROR: predicion out of range")
 
     return round(prediction/sum_of_weights)
@@ -132,7 +139,9 @@ Classifies each items in testing_data according to the k nearest neighbors.
 @param pLambda - used for calculating the weight of a neighbor (only relevant for OPTION3).
 @return - a 2D array with row = item prediciton.
 """
-def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
+def kNN(training_data, testing_data, k=5, option=1):
+    print "k = %d" % k
+    print "option = %d" % option
     print "training size: %d" % len(training_data)
     print "testing size: %d" % len(testing_data)
 
@@ -195,7 +204,7 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
             prediction = np.random.choice(4, p=[author_proba,movie_proba,music_proba,interview_proba])
         # OPTION3: distance-weighted (kernel-based) Nearest Neighbor: predict with weights relative to distance.
         elif option == 3:
-            prediction = getWeightPrediction(item, nn, training_word_proba, pLambda)
+            prediction = getWeightPrediction(item, nn, training_word_proba)
         
         ##############################
         ## Append prediction result ##
@@ -225,14 +234,21 @@ def kNN(training_data, testing_data, k=5, option=1, pLambda=1):
 
     print correct / len(testing_data)
     print "done making predictions."
-    return predictions
+    return predictions, correct/len(testing_data)
 
 start = datetime.now()
 """
 Uncomment to test:
 """
-training_data = readData(PATH_TO_TRAIN_DATA, returnSize=2000) #max = 53245
-predictions = kNN(training_data[:1600], training_data[1600:], k=10, option=2, pLambda=1)
+CCR = 0.0
+for _ in range(10):
+    print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    training_data = readData(PATH_TO_TRAIN_DATA, returnSize=1000) #max = 53245
+    predictions, ccr = kNN(training_data[:800], training_data[800:], k=56, option=1)
+    CCR += ccr
+    print "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+print CCR / 10.0
+
 
 """
 Uncomment to create the prediction file:
