@@ -1,0 +1,193 @@
+#!/usr/bin/env python
+
+# This file contains functions for doing pre-processing of data
+
+import csv
+import string
+import nltk.corpus
+import random
+import numpy as np
+
+simpleWords = nltk.corpus.stopwords.words('english')
+numFields = 3
+numClasses = 4
+
+# Four functions:
+# getWordCount: 	Takes in data file, returns word counts for each class
+# getProb:		Takes in word counts, spits out P(c) and P(w|c).
+# doPrediction:		Takes in test file and trained probabilities, spits out list of predictions
+# createTraining:	Takes in file and training count, spits out shuffled training/testing set.
+
+# Input:
+# dataFile:	String. csv file name
+# doExclusion:	Int. Flag to exclude simple words
+# dataLimit:	Int. Limit number of training examples
+# 
+# Output:
+# classWordCount:	Dict list. Returns the number of times each word appears in a given class.
+# classWordTotals:	Int list. Total number of words in each class
+# classTotal:		Int list. Total number of examples in each class.
+def getWordCount( dataFile, doExclusion, dataLimit ):
+	csvReader = csv.reader(dataFile, delimiter=',', quotechar='"')
+	indLine = 0
+	datInd = []
+	datClass = []
+	wordList = []
+	classWordCount = [{} for i in range(numClasses)]
+	classWordTotals= [0 for i in range(numClasses)]
+	classTotal = [0 for i in range(numClasses)]
+#	pWC = [0 for k in range(numClasses)]
+
+	for dirtyData in csvReader:
+#		dirtyData = unicode(dirtyData,'utf-8')
+		# First line - skip
+		if indLine == 0:
+			indLine += 1
+			continue
+		if indLine % 5000 == 0:
+			print(indLine)
+		if dataLimit != 0 and indLine >= dataLimit:
+			return classWordCount, classWordTotals, classTotal
+		if dirtyData == '':
+			continue
+#		print(indLine)
+		# Get data index and class
+		datInd.append( int(dirtyData[0].translate(None, string.punctuation)) )
+		curClass = ( int(dirtyData[-1].translate(None,string.punctuation)) )
+#		print(curClass)
+		datClass.append(curClass)
+
+		# dirtyData[1:-2] holds potentially large tokens.
+		# The efficient way to do it would be to parse every token, then blah.
+		# The I-don't-want-to-bother way is to smoosh them all together and parse from there.
+		# Guess which one I'm doing!
+		tempTok = ''
+		for tok in dirtyData[1:-1]:
+			tempTok += tok.replace('__EOS__','')
+#		tempTok = unicode(tempTok,'utf-8')
+		tempTok = tempTok.translate(None, string.punctuation).lower()
+		tempList = string.split(tempTok)
+		wordList = []
+		for buf in tempList:
+			wordList.append(unicode(buf,'utf-8'))
+		
+		# Count words		
+		for word in wordList:
+			# If we're not removing simple words, or word is not a simple word
+			if doExclusion == 0 or not word in simpleWords:
+				classWordCount[curClass][word] = classWordCount[curClass].get(word, 0) + 1
+				classWordTotals[curClass] += 1
+			# Ignore simple words
+			elif word == '':
+				continue
+			elif word in simpleWords:
+				continue
+#			if uniqueWords.get(word,0) == 0:
+#				uniqueWords[word] = 1
+#			if word not in uniqueWords:
+#				uniqueWords.append(word)
+		classTotal[curClass] += 1
+		indLine += 1
+	return classWordCount, classWordTotals, classTotal
+
+# Calculates probabilities
+def getProb( classWordCount, classWordTotals, classTotal ):
+	# p( c )
+	pc = [0 for k in range(numClasses)]
+	pwc = [{} for k in range(numClasses)]
+	for i in range(numClasses):
+		pc[i] = float(classTotal[i]) / sum(classTotal)
+
+	# P(wi | C)
+	for classInd in range(numClasses):
+		for word in classWordCount[classInd]:
+			pwc[classInd][word] = float(classWordCount[classInd][word]) / classWordTotals[classInd]
+	return pc, pwc
+
+# Does prediction
+def doPrediction( dataFile, pc, pwc, classWordTotal, isValidate ):
+	csvReader = csv.reader(dataFile, delimiter=',', quotechar='"')
+	defReturn = [1/float(tot) for tot in classWordTotal] #default return value for new words
+	wordList = []
+	classList = []
+	good = 0 # number of correct classifications
+	total = 0 # total number of examples
+	for ind,dirtyData in enumerate(csvReader):
+#		dirtyData = unicode(dirtyData,'utf-8')
+		pcw = []
+		# First line - skip
+		if ind == 0:
+			continue
+		if ind % 5000 == 0:
+			print(ind)
+		if dirtyData == '':
+			continue
+
+
+		# Get data index and class
+		if isValidate == 1:
+			curClass = ( int(dirtyData[-1].translate(None,string.punctuation)) )
+#			datClass.append(curClass)
+		else:
+			curClass = -1
+
+		# The efficient way to do it would be to parse every token, then blah.
+		# The I-don't-want-to-bother way is to smoosh them all together and parse from there.
+		# Guess which one I'm doing!
+		tempTok = ''
+		for tok in dirtyData[1:-1]:
+			tempTok += tok.replace('__EOS__','')
+#		tempTok = unicode(tempTok,'utf-8')
+		tempTok = tempTok.translate(None, string.punctuation).lower()
+		tempList = string.split(tempTok)
+		wordList = []
+		for buf in tempList:
+			wordList.append(unicode(buf,'utf-8'))
+
+		# get P(C|w) = P(C) P(t|C) = P(C) prod(P(w|C)
+		# Doing log(P(C|w)) instead
+		# Initialize to P(C):
+		pTemp = [np.log(float(pc[i])) for i in range(numClasses)]
+
+		# Calculate the probability of the set of words for each class
+		for word in wordList:
+			for indClass in range(numClasses):
+				pTemp[indClass] += np.log( float(pwc[indClass].get(word, defReturn[indClass]) ) )
+
+		# Get which probability is maximal
+		predClass = np.argmax( pTemp )
+		classList.append(predClass)
+		if isValidate == 1:
+			if curClass == predClass:
+				good += 1
+			total += 1
+	if isValidate == 0:
+		return classList, 0
+	else:
+		return classList, float(good)/total
+
+def createTraining( fileIn, fileTrainOut, fileValidOut, numTraining):
+	dataIn = open(fileIn, 'r')
+	dataTrainOut = open(fileTrainOut, 'w')
+	dataValidOut = open(fileValidOut, 'w')
+	random.seed('chicken')
+	datAll = []
+	for ind,lin in enumerate(dataIn):
+		if ind == 0:
+			continue
+		else:
+			datAll.append(lin)
+
+	random.shuffle(datAll)
+#	print datAll
+	dataTrainOut.write('Id,Interview,Prediction\n')
+	dataValidOut.write('Id,Interview,Prediction\n')
+	for ind,dat in enumerate(datAll):
+		if ind < numTraining:
+			dataTrainOut.write(dat)
+		else:
+			dataValidOut.write(dat)
+	dataIn.close()
+	dataTrainOut.close()
+	dataValidOut.close()
+	
